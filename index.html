@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <title>État des lieux</title>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    * { -webkit-tap-highlight-color: transparent; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    @media print { .no-print { display: none !important; } }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    // Icons as simple components
+    const Icon = ({ name, size = 20, className = "" }) => {
+      const ref = useRef(null);
+      useEffect(() => {
+        if (ref.current && lucide[name]) {
+          ref.current.innerHTML = '';
+          const svg = lucide.createElement(lucide[name]);
+          svg.setAttribute('width', size);
+          svg.setAttribute('height', size);
+          if (className) svg.setAttribute('class', className);
+          ref.current.appendChild(svg);
+        }
+      }, [name, size, className]);
+      return <span ref={ref} className="inline-flex items-center justify-center" />;
+    };
+
+    const ETAT_OPTIONS = ['Bon', 'Approprié', 'Mauvais', 'Sans objet'];
+    const OUI_NON = ['Oui', 'Non'];
+
+    const defaultTemplate = {
+      nom: 'Appartement standard',
+      pieces: {
+        couloir: {
+          nom: 'Couloir - Buanderie - WC', ordre: 1,
+          etatLieux: [
+            { id: 'rev_sol', nom: 'Revêtement de sol' },
+            { id: 'plinthes', nom: 'Plinthes de sol' },
+            { id: 'murs', nom: 'Murs et plafond' },
+            { id: 'portes', nom: 'Porte(s)' },
+            { id: 'serrures', nom: 'Serrures et quincailleries' },
+            { id: 'interrupteurs', nom: 'Interrupteurs et prises' },
+            { id: 'luminaires', nom: 'Luminaires de plafond' },
+            { id: 'wc', nom: 'WC + meuble' },
+          ],
+          inventaire: [
+            { id: 'detecteur', nom: 'Détecteur de fumée', qte: 1 },
+            { id: 'interphone', nom: 'Interphone', qte: 1 },
+            { id: 'aspirateur', nom: 'Aspirateur', qte: 1 },
+            { id: 'fer', nom: 'Fer et table à repasser', qte: 1 },
+            { id: 'balai', nom: 'Balai', qte: 1 },
+            { id: 'lave_linge', nom: 'Machine à laver le linge', qte: 1 },
+          ],
+        },
+        salon: {
+          nom: 'Salon', ordre: 2,
+          etatLieux: [
+            { id: 'rev_sol', nom: 'Revêtement de sol' },
+            { id: 'plinthes', nom: 'Plinthes de sol' },
+            { id: 'murs', nom: 'Murs et plafond' },
+            { id: 'fenetre', nom: 'Fenêtre - volet' },
+            { id: 'portes', nom: 'Porte(s)' },
+            { id: 'interrupteurs', nom: 'Interrupteurs et prises' },
+            { id: 'luminaires', nom: 'Luminaire(s) plafond' },
+          ],
+          inventaire: [
+            { id: 'table_manger', nom: 'Table à manger', qte: 1 },
+            { id: 'chaises', nom: 'Chaises', qte: 4 },
+            { id: 'table_basse', nom: 'Table basse', qte: 1 },
+            { id: 'canape', nom: 'Canapé', qte: 1 },
+            { id: 'meuble_tv', nom: 'Meuble TV', qte: 1 },
+            { id: 'tv', nom: 'TV', qte: 1 },
+            { id: 'box', nom: 'Box internet', qte: 1 },
+          ],
+        },
+        cuisine: {
+          nom: 'Cuisine', ordre: 3,
+          etatLieux: [
+            { id: 'rev_sol', nom: 'Revêtement de sol' },
+            { id: 'murs', nom: 'Murs et plafond' },
+            { id: 'fenetre', nom: 'Fenêtre - volet' },
+            { id: 'portes', nom: 'Porte(s)' },
+            { id: 'luminaires', nom: 'Luminaire(s)' },
+            { id: 'plan_travail', nom: 'Plan de travail' },
+            { id: 'meubles', nom: 'Meubles de cuisine' },
+            { id: 'four', nom: 'Four de cuisson' },
+            { id: 'plaques', nom: 'Plaques de cuisson' },
+            { id: 'hotte', nom: 'Hotte' },
+            { id: 'frigo', nom: 'Réfrigérateur' },
+            { id: 'lave_vaisselle', nom: 'Lave-vaisselle' },
+            { id: 'evier', nom: 'Évier - robinet' },
+          ],
+          inventaire: [
+            { id: 'assiettes', nom: 'Assiettes', qte: 6 },
+            { id: 'verres', nom: 'Verres', qte: 6 },
+            { id: 'tasses', nom: 'Tasses / mug', qte: 6 },
+            { id: 'bols', nom: 'Bols', qte: 6 },
+            { id: 'couverts', nom: 'Set couverts (6 pers)', qte: 1 },
+            { id: 'casseroles', nom: 'Casseroles', qte: 2 },
+            { id: 'poele', nom: 'Poêle', qte: 1 },
+            { id: 'cafetiere', nom: 'Machine à café', qte: 1 },
+            { id: 'micro_onde', nom: 'Micro-onde', qte: 1 },
+            { id: 'bouilloire', nom: 'Bouilloire', qte: 1 },
+            { id: 'grille_pain', nom: 'Grille-pain', qte: 1 },
+          ],
+        },
+        salle_bain: {
+          nom: 'Salle de bain', ordre: 4,
+          etatLieux: [
+            { id: 'rev_sol', nom: 'Revêtement de sol' },
+            { id: 'murs', nom: 'Murs et plafond' },
+            { id: 'portes', nom: 'Porte(s)' },
+            { id: 'luminaires', nom: 'Luminaire(s)' },
+            { id: 'douche', nom: 'Douche / Baignoire' },
+            { id: 'meuble', nom: 'Meuble de SdB' },
+            { id: 'lavabo', nom: 'Lavabo' },
+            { id: 'seche_serviette', nom: 'Sèche-serviette' },
+          ],
+          inventaire: [
+            { id: 'seche_linge', nom: 'Sèche-linge', qte: 1 },
+          ],
+        },
+        chambre: {
+          nom: 'Chambre', ordre: 5,
+          etatLieux: [
+            { id: 'rev_sol', nom: 'Revêtement de sol' },
+            { id: 'murs', nom: 'Murs et plafond' },
+            { id: 'fenetre', nom: 'Fenêtre - volet' },
+            { id: 'portes', nom: 'Porte(s)' },
+            { id: 'luminaires', nom: 'Luminaire(s)' },
+            { id: 'interrupteurs', nom: 'Interrupteurs et prises' },
+          ],
+          inventaire: [
+            { id: 'lit', nom: 'Lit', qte: 1 },
+            { id: 'matelas', nom: 'Matelas', qte: 1 },
+            { id: 'couette', nom: 'Couette', qte: 1 },
+            { id: 'oreiller', nom: 'Oreiller', qte: 1 },
+            { id: 'bureau', nom: 'Bureau', qte: 1 },
+            { id: 'chaise', nom: 'Chaise', qte: 1 },
+            { id: 'armoire', nom: 'Armoire', qte: 1 },
+          ],
+        },
+        chauffage: {
+          nom: 'Chauffage / Eau chaude', ordre: 6,
+          etatLieux: [
+            { id: 'chaudiere', nom: 'Chaudière / Radiateurs' },
+            { id: 'ballon', nom: 'Ballon eau chaude' },
+          ],
+          inventaire: [],
+        },
+      },
+      cles: [
+        { id: 'badge', nom: 'Badge immeuble', qte: 1 },
+        { id: 'appartement', nom: 'Clé appartement', qte: 2 },
+        { id: 'boite_lettres', nom: 'Clé boîte aux lettres', qte: 1 },
+      ],
+    };
+
+    const templateToData = (template, type = 'sortie') => {
+      const pieces = {};
+      Object.entries(template.pieces).forEach(([key, piece]) => {
+        pieces[key] = {
+          nom: piece.nom, ordre: piece.ordre || 0,
+          etatLieux: piece.etatLieux.map(item => ({ ...item, etat: '', commentaire: '', photos: [] })),
+          inventaire: piece.inventaire.map(item => ({ ...item, etat: '', commentaire: '', photos: [] })),
+        };
+      });
+      return {
+        info: { type, proprietaire: '', locataire: '', date: new Date().toISOString().split('T')[0], adresse: '', appartement: template.nom },
+        pieces,
+        cles: template.cles.map(cle => ({ ...cle, rendue: '', commentaire: '', photos: [] })),
+        signatures: { locataire: '', proprietaire: '' },
+      };
+    };
+
+    const deepClone = (obj) => JSON.parse(JSON.stringify(obj));
+
+    function App() {
+      const [templates, setTemplates] = useState(() => {
+        try { const saved = localStorage.getItem('edl_templates'); return saved ? JSON.parse(saved) : { 'default': defaultTemplate }; }
+        catch { return { 'default': defaultTemplate }; }
+      });
+      const [currentTemplate, setCurrentTemplate] = useState('default');
+      const [data, setData] = useState(() => templateToData(defaultTemplate));
+      const [activeTab, setActiveTab] = useState('info');
+      const [expandedPiece, setExpandedPiece] = useState(null);
+      const [showPrint, setShowPrint] = useState(false);
+      const [selectedPhoto, setSelectedPhoto] = useState(null);
+      const [showConfig, setShowConfig] = useState(false);
+      const [configTab, setConfigTab] = useState('appartements');
+      const [showComparison, setShowComparison] = useState(false);
+      const [savedEdls, setSavedEdls] = useState(() => {
+        try { const saved = localStorage.getItem('edl_saved'); return saved ? JSON.parse(saved) : []; }
+        catch { return []; }
+      });
+      const [entryData, setEntryData] = useState(null);
+      const [exitData, setExitData] = useState(null);
+      const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+
+      useEffect(() => { try { localStorage.setItem('edl_templates', JSON.stringify(templates)); } catch {} }, [templates]);
+      useEffect(() => { try { localStorage.setItem('edl_saved', JSON.stringify(savedEdls)); } catch {} }, [savedEdls]);
+
+      const updateInfo = (field, value) => setData(prev => ({ ...prev, info: { ...prev.info, [field]: value } }));
+      
+      const updateEtatLieux = (pieceKey, itemId, field, value) => {
+        setData(prev => ({
+          ...prev,
+          pieces: { ...prev.pieces, [pieceKey]: { ...prev.pieces[pieceKey], etatLieux: prev.pieces[pieceKey].etatLieux.map(item => item.id === itemId ? { ...item, [field]: value } : item) } }
+        }));
+      };
+
+      const updateInventaire = (pieceKey, itemId, field, value) => {
+        setData(prev => ({
+          ...prev,
+          pieces: { ...prev.pieces, [pieceKey]: { ...prev.pieces[pieceKey], inventaire: prev.pieces[pieceKey].inventaire.map(item => item.id === itemId ? { ...item, [field]: value } : item) } }
+        }));
+      };
+
+      const updateCle = (cleId, field, value) => setData(prev => ({ ...prev, cles: prev.cles.map(cle => cle.id === cleId ? { ...cle, [field]: value } : cle) }));
+      const updateSignature = (who, value) => setData(prev => ({ ...prev, signatures: { ...prev.signatures, [who]: value } }));
+
+      const addPieceToTemplate = (templateKey, pieceName) => {
+        const pieceId = pieceName.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') + '_' + Date.now();
+        const maxOrdre = Math.max(...Object.values(templates[templateKey].pieces).map(p => p.ordre || 0), 0);
+        setTemplates(prev => ({
+          ...prev, [templateKey]: { ...prev[templateKey], pieces: { ...prev[templateKey].pieces, [pieceId]: {
+            nom: pieceName, ordre: maxOrdre + 1,
+            etatLieux: [{ id: 'rev_sol', nom: 'Revêtement de sol' }, { id: 'murs', nom: 'Murs et plafond' }, { id: 'fenetre', nom: 'Fenêtre' }, { id: 'portes', nom: 'Porte(s)' }, { id: 'luminaires', nom: 'Luminaires' }],
+            inventaire: [],
+          }}}
+        }));
+      };
+
+      const removePieceFromTemplate = (templateKey, pieceKey) => {
+        if (window.confirm(`Supprimer "${templates[templateKey].pieces[pieceKey].nom}" ?`)) {
+          const newPieces = { ...templates[templateKey].pieces };
+          delete newPieces[pieceKey];
+          setTemplates(prev => ({ ...prev, [templateKey]: { ...prev[templateKey], pieces: newPieces } }));
+        }
+      };
+
+      const saveAsTemplate = (name) => {
+        const template = { nom: name, pieces: {}, cles: data.cles.map(({ id, nom, qte }) => ({ id, nom, qte })) };
+        Object.entries(data.pieces).forEach(([key, piece]) => {
+          template.pieces[key] = { nom: piece.nom, ordre: piece.ordre || 0, etatLieux: piece.etatLieux.map(({ id, nom }) => ({ id, nom })), inventaire: piece.inventaire.map(({ id, nom, qte }) => ({ id, nom, qte })) };
+        });
+        setTemplates(prev => ({ ...prev, [name.toLowerCase().replace(/\s+/g, '_')]: template }));
+      };
+
+      const loadTemplate = (templateKey) => {
+        const template = templates[templateKey];
+        if (template) { setData(templateToData(template, data.info.type)); setCurrentTemplate(templateKey); }
+      };
+
+      const deleteTemplate = (templateKey) => {
+        if (templateKey === 'default') return;
+        if (window.confirm(`Supprimer "${templates[templateKey].nom}" ?`)) {
+          const newTemplates = { ...templates }; delete newTemplates[templateKey]; setTemplates(newTemplates);
+          if (currentTemplate === templateKey) loadTemplate('default');
+        }
+      };
+
+      const updateTemplateItem = (templateKey, pieceKey, type, itemId, field, value) => {
+        setTemplates(prev => ({
+          ...prev, [templateKey]: { ...prev[templateKey], pieces: { ...prev[templateKey].pieces, [pieceKey]: { ...prev[templateKey].pieces[pieceKey], [type]: prev[templateKey].pieces[pieceKey][type].map(item => item.id === itemId ? { ...item, [field]: value } : item) } } }
+        }));
+      };
+
+      const addTemplateItem = (templateKey, pieceKey, type, item) => {
+        setTemplates(prev => ({
+          ...prev, [templateKey]: { ...prev[templateKey], pieces: { ...prev[templateKey].pieces, [pieceKey]: { ...prev[templateKey].pieces[pieceKey], [type]: [...prev[templateKey].pieces[pieceKey][type], item] } } }
+        }));
+      };
+
+      const removeTemplateItem = (templateKey, pieceKey, type, itemId) => {
+        setTemplates(prev => ({
+          ...prev, [templateKey]: { ...prev[templateKey], pieces: { ...prev[templateKey].pieces, [pieceKey]: { ...prev[templateKey].pieces[pieceKey], [type]: prev[templateKey].pieces[pieceKey][type].filter(item => item.id !== itemId) } } }
+        }));
+      };
+
+      const saveCurrentEdl = () => {
+        setSavedEdls(prev => [...prev, { id: Date.now(), data: deepClone(data), savedAt: new Date().toISOString(), templateKey: currentTemplate }]);
+        alert('État des lieux sauvegardé !');
+      };
+
+      const loadEdl = (edl) => { setData(edl.data); if (edl.templateKey && templates[edl.templateKey]) setCurrentTemplate(edl.templateKey); };
+      const deleteEdl = (edlId) => { if (window.confirm('Supprimer ?')) setSavedEdls(prev => prev.filter(e => e.id !== edlId)); };
+
+      const getComparisonStatus = (entryItem, exitItem) => {
+        if (!entryItem || !exitItem) return 'unknown';
+        if (entryItem.etat === exitItem.etat) return 'same';
+        if (entryItem.etat === 'Bon' && exitItem.etat !== 'Bon') return 'degraded';
+        if (entryItem.etat !== 'Bon' && exitItem.etat === 'Bon') return 'improved';
+        return 'changed';
+      };
+
+      const handlePhotoCapture = (e, updateFn, currentPhotos) => {
+        Array.from(e.target.files).forEach(file => {
+          const reader = new FileReader();
+          reader.onloadend = () => updateFn([...currentPhotos, { id: Date.now() + Math.random(), data: reader.result, timestamp: new Date().toISOString() }]);
+          reader.readAsDataURL(file);
+        });
+        e.target.value = '';
+      };
+
+      const generatePDF = async () => {
+        setIsGeneratingPdf(true);
+        if (!window.html2pdf) {
+          await new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js';
+            script.onload = resolve; script.onerror = reject;
+            document.body.appendChild(script);
+          });
+        }
+        setShowPrint(true);
+        setTimeout(async () => {
+          try {
+            const element = document.getElementById('print-content');
+            await window.html2pdf().set({
+              margin: 10, filename: `edl-${data.info.type}-${data.info.date}.pdf`,
+              image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2 },
+              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            }).from(element).save();
+          } catch (err) { alert('Erreur PDF'); }
+          setShowPrint(false); setIsGeneratingPdf(false);
+        }, 500);
+      };
+
+      const exportJSON = () => {
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `edl-${data.info.type}-${data.info.date}.json`; a.click();
+      };
+
+      const exportTemplates = () => {
+        const blob = new Blob([JSON.stringify(templates, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+        a.download = `modeles-appartements.json`; a.click();
+      };
+
+      const importTemplates = (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => { try { setTemplates(prev => ({ ...prev, ...JSON.parse(event.target.result) })); alert('Importé !'); } catch { alert('Erreur'); } };
+          reader.readAsText(file);
+        }
+      };
+
+      const resetForm = () => { if (window.confirm('Réinitialiser ?')) { setData(templateToData(templates[currentTemplate], data.info.type)); setActiveTab('info'); } };
+
+      const countPhotos = () => {
+        let total = 0;
+        Object.values(data.pieces).forEach(piece => { piece.etatLieux.forEach(item => total += item.photos.length); piece.inventaire.forEach(item => total += item.photos.length); });
+        data.cles.forEach(cle => total += cle.photos.length);
+        return total;
+      };
+
+      const sortedPieces = Object.entries(data.pieces).sort((a, b) => (a[1].ordre || 0) - (b[1].ordre || 0));
+      const totalPhotos = countPhotos();
+
+      const EtatButton = ({ value, selected, onClick }) => (
+        <button onClick={() => onClick(value)} className={`px-2 py-1 text-xs rounded-lg border transition-all ${selected ? value === 'Bon' ? 'bg-green-500 text-white' : value === 'Approprié' ? 'bg-yellow-500 text-white' : value === 'Mauvais' ? 'bg-red-500 text-white' : 'bg-gray-500 text-white' : 'bg-white text-gray-700 border-gray-300'}`}>
+          {value}
+        </button>
+      );
+
+      const TabButton = ({ id, icon, label, active, badge }) => (
+        <button onClick={() => setActiveTab(id)} className={`flex flex-col items-center justify-center p-2 flex-1 transition-all relative ${active ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50' : 'text-gray-500'}`}>
+          <Icon name={icon} size={20} />
+          <span className="text-xs mt-1">{label}</span>
+          {badge > 0 && <span className="absolute top-1 right-1/4 bg-red-500 text-white text-xs rounded-full w-4 h-4 flex items-center justify-center">{badge > 9 ? '9+' : badge}</span>}
+        </button>
+      );
+
+      const PhotoGallery = ({ photos, onRemove, inputId, onAddPhoto }) => (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {photos.map((photo, idx) => (
+            <div key={photo.id} className="relative">
+              <img src={photo.data} alt="" className="w-14 h-14 object-cover rounded-lg border cursor-pointer" onClick={() => setSelectedPhoto(photo)} />
+              <button onClick={() => onRemove(photo.id)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-4 h-4 text-xs flex items-center justify-center">×</button>
+            </div>
+          ))}
+          <label htmlFor={inputId} className="w-14 h-14 border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-blue-400">
+            <Icon name="Camera" size={16} className="text-gray-400" />
+            <span className="text-xs text-gray-400">Photo</span>
+          </label>
+          <input type="file" id={inputId} accept="image/*" capture="environment" multiple className="hidden" onChange={onAddPhoto} />
+        </div>
+      );
+
+      const PieceSection = ({ pieceKey, piece }) => {
+        const isExpanded = expandedPiece === pieceKey;
+        const photoCount = [...piece.etatLieux, ...piece.inventaire].reduce((acc, item) => acc + item.photos.length, 0);
+        return (
+          <div className="mb-3 bg-white rounded-xl shadow-sm border overflow-hidden">
+            <button onClick={() => setExpandedPiece(isExpanded ? null : pieceKey)} className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-indigo-50">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-gray-800">{piece.nom}</span>
+                {photoCount > 0 && <span className="bg-blue-100 text-blue-700 text-xs px-2 py-0.5 rounded-full">📷 {photoCount}</span>}
+              </div>
+              <Icon name={isExpanded ? "ChevronUp" : "ChevronDown"} size={20} />
+            </button>
+            {isExpanded && (
+              <div className="p-3 space-y-4">
+                {piece.etatLieux.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-sm text-blue-700 mb-2">🏠 État des lieux</h4>
+                    <div className="space-y-3">
+                      {piece.etatLieux.map(item => (
+                        <div key={item.id} className="bg-gray-50 p-3 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-sm">{item.nom}</span>
+                            {item.photos.length > 0 && <span className="text-xs text-blue-600">📷 {item.photos.length}</span>}
+                          </div>
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {ETAT_OPTIONS.map(opt => <EtatButton key={opt} value={opt} selected={item.etat === opt} onClick={(v) => updateEtatLieux(pieceKey, item.id, 'etat', v)} />)}
+                          </div>
+                          <input type="text" placeholder="Commentaire..." value={item.commentaire} onChange={(e) => updateEtatLieux(pieceKey, item.id, 'commentaire', e.target.value)} className="w-full text-sm p-2 border rounded-lg mb-2" />
+                          <PhotoGallery photos={item.photos} onRemove={(photoId) => updateEtatLieux(pieceKey, item.id, 'photos', item.photos.filter(p => p.id !== photoId))} inputId={`p-e-${pieceKey}-${item.id}`} onAddPhoto={(e) => handlePhotoCapture(e, (photos) => updateEtatLieux(pieceKey, item.id, 'photos', photos), item.photos)} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {piece.inventaire.length > 0 && (
+                  <div>
+                    <h4 className="font-medium text-sm text-green-700 mb-2">📋 Inventaire</h4>
+                    <div className="space-y-3">
+                      {piece.inventaire.map(item => (
+                        <div key={item.id} className="bg-gray-50 p-3 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-medium text-sm">{item.nom}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-500">Qté:</span>
+                              <input type="number" min="0" value={item.qte} onChange={(e) => updateInventaire(pieceKey, item.id, 'qte', parseInt(e.target.value) || 0)} className="w-12 text-center text-sm p-1 border rounded" />
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap gap-1 mb-2">
+                            {ETAT_OPTIONS.map(opt => <EtatButton key={opt} value={opt} selected={item.etat === opt} onClick={(v) => updateInventaire(pieceKey, item.id, 'etat', v)} />)}
+                          </div>
+                          <input type="text" placeholder="Commentaire..." value={item.commentaire} onChange={(e) => updateInventaire(pieceKey, item.id, 'commentaire', e.target.value)} className="w-full text-sm p-2 border rounded-lg mb-2" />
+                          <PhotoGallery photos={item.photos} onRemove={(photoId) => updateInventaire(pieceKey, item.id, 'photos', item.photos.filter(p => p.id !== photoId))} inputId={`p-i-${pieceKey}-${item.id}`} onAddPhoto={(e) => handlePhotoCapture(e, (photos) => updateInventaire(pieceKey, item.id, 'photos', photos), item.photos)} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      };
+
+      // Config Modal
+      const ConfigModal = () => {
+        const [newTemplateName, setNewTemplateName] = useState('');
+        const [selectedTemplateKey, setSelectedTemplateKey] = useState(currentTemplate);
+        const [newPieceName, setNewPieceName] = useState('');
+        const [newItemName, setNewItemName] = useState('');
+        const [newItemQte, setNewItemQte] = useState(1);
+        const [expandedConfigPiece, setExpandedConfigPiece] = useState(null);
+        const template = templates[selectedTemplateKey];
+
+        return (
+          <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
+            <div className="bg-white w-full max-w-lg max-h-[90vh] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col">
+              <div className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white p-4 flex items-center justify-between">
+                <h2 className="font-bold text-lg">⚙️ Configuration</h2>
+                <button onClick={() => setShowConfig(false)} className="p-1">✕</button>
+              </div>
+              <div className="flex border-b text-sm">
+                {['appartements', 'pieces', 'inventaire', 'export'].map(tab => (
+                  <button key={tab} onClick={() => setConfigTab(tab)} className={`flex-1 py-3 font-medium capitalize ${configTab === tab ? 'text-purple-600 border-b-2 border-purple-600' : 'text-gray-500'}`}>{tab}</button>
+                ))}
+              </div>
+              <div className="flex-1 overflow-auto p-4">
+                {configTab === 'appartements' && (
+                  <div className="space-y-4">
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <label className="block text-sm font-medium mb-2">Créer un modèle</label>
+                      <div className="flex gap-2">
+                        <input type="text" value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} placeholder="Nom (ex: 33C Cellerier)" className="flex-1 p-2 border rounded-lg text-sm" />
+                        <button onClick={() => { if (newTemplateName.trim()) { saveAsTemplate(newTemplateName.trim()); setNewTemplateName(''); } }} className="px-4 py-2 bg-purple-600 text-white rounded-lg">+</button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {Object.entries(templates).map(([key, tpl]) => (
+                        <div key={key} className={`p-3 rounded-lg border-2 ${selectedTemplateKey === key ? 'border-purple-500 bg-purple-50' : 'border-gray-200'}`}>
+                          <div className="flex items-center justify-between">
+                            <button onClick={() => setSelectedTemplateKey(key)} className="flex-1 text-left font-medium">{tpl.nom}</button>
+                            {key !== 'default' && <button onClick={() => deleteTemplate(key)} className="text-red-500 text-sm">🗑</button>}
+                          </div>
+                          {selectedTemplateKey === key && <button onClick={() => { loadTemplate(key); setShowConfig(false); }} className="mt-2 w-full py-2 bg-purple-600 text-white rounded-lg text-sm">Charger</button>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {configTab === 'pieces' && (
+                  <div className="space-y-4">
+                    <div className="bg-blue-50 p-3 rounded-lg">
+                      <label className="block text-sm font-medium mb-2">Ajouter une pièce</label>
+                      <div className="flex gap-2">
+                        <input type="text" value={newPieceName} onChange={(e) => setNewPieceName(e.target.value)} placeholder="Nom (ex: Chambre 2)" className="flex-1 p-2 border rounded-lg text-sm" />
+                        <button onClick={() => { if (newPieceName.trim()) { addPieceToTemplate(selectedTemplateKey, newPieceName.trim()); setNewPieceName(''); } }} className="px-4 py-2 bg-blue-600 text-white rounded-lg">+</button>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {Object.entries(template.pieces).sort((a, b) => (a[1].ordre || 0) - (b[1].ordre || 0)).map(([pieceKey, piece]) => (
+                        <div key={pieceKey} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
+                          <span>{piece.nom}</span>
+                          <button onClick={() => removePieceFromTemplate(selectedTemplateKey, pieceKey)} className="text-red-500">🗑</button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {configTab === 'inventaire' && (
+                  <div className="space-y-3">
+                    <p className="text-sm text-gray-600 bg-yellow-50 p-2 rounded">Modèle: <strong>{template.nom}</strong></p>
+                    {Object.entries(template.pieces).sort((a, b) => (a[1].ordre || 0) - (b[1].ordre || 0)).map(([pieceKey, piece]) => (
+                      <div key={pieceKey} className="border rounded-lg overflow-hidden">
+                        <button onClick={() => setExpandedConfigPiece(expandedConfigPiece === pieceKey ? null : pieceKey)} className="w-full flex items-center justify-between p-3 bg-gray-50 text-sm font-medium">
+                          {piece.nom}
+                          <span>{expandedConfigPiece === pieceKey ? '▲' : '▼'}</span>
+                        </button>
+                        {expandedConfigPiece === pieceKey && (
+                          <div className="p-3 space-y-3 text-sm">
+                            <div>
+                              <h5 className="font-semibold text-blue-700 mb-1">État des lieux</h5>
+                              {piece.etatLieux.map(item => (
+                                <div key={item.id} className="flex items-center justify-between py-1">
+                                  <span>{item.nom}</span>
+                                  <button onClick={() => removeTemplateItem(selectedTemplateKey, pieceKey, 'etatLieux', item.id)} className="text-red-500 text-xs">✕</button>
+                                </div>
+                              ))}
+                              <div className="flex gap-2 mt-2">
+                                <input type="text" placeholder="Ajouter..." value={newItemName} onChange={(e) => setNewItemName(e.target.value)} className="flex-1 p-1 border rounded text-sm" />
+                                <button onClick={() => { if (newItemName.trim()) { addTemplateItem(selectedTemplateKey, pieceKey, 'etatLieux', { id: `c_${Date.now()}`, nom: newItemName.trim() }); setNewItemName(''); } }} className="px-2 bg-blue-500 text-white rounded">+</button>
+                              </div>
+                            </div>
+                            <div>
+                              <h5 className="font-semibold text-green-700 mb-1">Inventaire</h5>
+                              {piece.inventaire.map(item => (
+                                <div key={item.id} className="flex items-center justify-between py-1">
+                                  <span>{item.nom}</span>
+                                  <div className="flex items-center gap-2">
+                                    <input type="number" min="0" value={item.qte} onChange={(e) => updateTemplateItem(selectedTemplateKey, pieceKey, 'inventaire', item.id, 'qte', parseInt(e.target.value) || 0)} className="w-12 text-center p-1 border rounded text-sm" />
+                                    <button onClick={() => removeTemplateItem(selectedTemplateKey, pieceKey, 'inventaire', item.id)} className="text-red-500 text-xs">✕</button>
+                                  </div>
+                                </div>
+                              ))}
+                              <div className="flex gap-2 mt-2">
+                                <input type="text" placeholder="Ajouter..." value={newItemName} onChange={(e) => setNewItemName(e.target.value)} className="flex-1 p-1 border rounded text-sm" />
+                                <input type="number" min="1" value={newItemQte} onChange={(e) => setNewItemQte(parseInt(e.target.value) || 1)} className="w-12 text-center p-1 border rounded text-sm" />
+                                <button onClick={() => { if (newItemName.trim()) { addTemplateItem(selectedTemplateKey, pieceKey, 'inventaire', { id: `c_${Date.now()}`, nom: newItemName.trim(), qte: newItemQte }); setNewItemName(''); setNewItemQte(1); } }} className="px-2 bg-green-500 text-white rounded">+</button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {configTab === 'export' && (
+                  <div className="space-y-4">
+                    <div className="bg-gray-50 p-4 rounded-lg space-y-2">
+                      <h3 className="font-medium">Export / Import</h3>
+                      <button onClick={exportTemplates} className="w-full py-2 bg-purple-600 text-white rounded-lg text-sm">📤 Exporter les modèles</button>
+                      <label className="w-full py-2 bg-green-600 text-white rounded-lg text-sm flex items-center justify-center cursor-pointer">
+                        📥 Importer des modèles
+                        <input type="file" accept=".json" onChange={importTemplates} className="hidden" />
+                      </label>
+                      <button onClick={exportJSON} className="w-full py-2 bg-blue-600 text-white rounded-lg text-sm">💾 Exporter l'état actuel (JSON)</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      // Comparison Modal
+      const ComparisonModal = () => (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center">
+          <div className="bg-white w-full max-w-4xl max-h-[90vh] rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col">
+            <div className="bg-gradient-to-r from-purple-600 to-pink-600 text-white p-4 flex items-center justify-between">
+              <h2 className="font-bold text-lg">⚖️ Comparatif Entrée / Sortie</h2>
+              <button onClick={() => setShowComparison(false)}>✕</button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {!entryData || !exitData ? (
+                <div className="space-y-4">
+                  <p className="text-center text-gray-600">Sélectionnez un état d'entrée et un de sortie</p>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="border-2 border-green-200 rounded-lg p-3">
+                      <h3 className="font-semibold text-green-700 mb-2">📥 Entrée</h3>
+                      {entryData ? (
+                        <div className="bg-green-50 p-2 rounded">
+                          <p className="text-sm">{entryData.info.appartement} - {entryData.info.date}</p>
+                          <button onClick={() => setEntryData(null)} className="text-xs text-red-500">Retirer</button>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {savedEdls.filter(e => e.data.info.type === 'entree').map(edl => (
+                            <button key={edl.id} onClick={() => setEntryData(edl.data)} className="w-full text-left p-2 bg-gray-50 rounded hover:bg-green-50 text-sm">
+                              {edl.data.info.appartement} - {edl.data.info.date}
+                            </button>
+                          ))}
+                          {savedEdls.filter(e => e.data.info.type === 'entree').length === 0 && <p className="text-xs text-gray-400">Aucun</p>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="border-2 border-orange-200 rounded-lg p-3">
+                      <h3 className="font-semibold text-orange-700 mb-2">📤 Sortie</h3>
+                      {exitData ? (
+                        <div className="bg-orange-50 p-2 rounded">
+                          <p className="text-sm">{exitData.info.appartement} - {exitData.info.date}</p>
+                          <button onClick={() => setExitData(null)} className="text-xs text-red-500">Retirer</button>
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {savedEdls.filter(e => e.data.info.type === 'sortie').map(edl => (
+                            <button key={edl.id} onClick={() => setExitData(edl.data)} className="w-full text-left p-2 bg-gray-50 rounded hover:bg-orange-50 text-sm">
+                              {edl.data.info.appartement} - {edl.data.info.date}
+                            </button>
+                          ))}
+                          {savedEdls.filter(e => e.data.info.type === 'sortie').length === 0 && <p className="text-xs text-gray-400">Aucun</p>}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex justify-between items-center bg-gray-100 p-2 rounded text-sm">
+                    <span className="text-green-600">Entrée: {entryData.info.date}</span>
+                    <span className="text-orange-600">Sortie: {exitData.info.date}</span>
+                    <button onClick={() => { setEntryData(null); setExitData(null); }} className="text-blue-600 text-xs">Changer</button>
+                  </div>
+                  {Object.entries(entryData.pieces).map(([pieceKey, entryPiece]) => {
+                    const exitPiece = exitData.pieces[pieceKey];
+                    if (!exitPiece) return null;
+                    return (
+                      <div key={pieceKey} className="border rounded-lg overflow-hidden text-sm">
+                        <div className="bg-blue-100 p-2 font-semibold">{entryPiece.nom}</div>
+                        <table className="w-full">
+                          <thead className="bg-gray-50"><tr><th className="p-1 text-left">Élément</th><th className="p-1 text-center text-green-600">Entrée</th><th className="p-1 text-center text-orange-600">Sortie</th><th className="p-1 text-center">Évolution</th></tr></thead>
+                          <tbody>
+                            {entryPiece.etatLieux.map(entryItem => {
+                              const exitItem = exitPiece.etatLieux.find(i => i.id === entryItem.id);
+                              const status = getComparisonStatus(entryItem, exitItem);
+                              return (
+                                <tr key={entryItem.id} className="border-t">
+                                  <td className="p-1">{entryItem.nom}</td>
+                                  <td className="p-1 text-center"><span className={`px-1 rounded text-xs ${entryItem.etat === 'Bon' ? 'bg-green-200' : entryItem.etat === 'Approprié' ? 'bg-yellow-200' : entryItem.etat === 'Mauvais' ? 'bg-red-200' : 'bg-gray-200'}`}>{entryItem.etat || '-'}</span></td>
+                                  <td className="p-1 text-center"><span className={`px-1 rounded text-xs ${exitItem?.etat === 'Bon' ? 'bg-green-200' : exitItem?.etat === 'Approprié' ? 'bg-yellow-200' : exitItem?.etat === 'Mauvais' ? 'bg-red-200' : 'bg-gray-200'}`}>{exitItem?.etat || '-'}</span></td>
+                                  <td className="p-1 text-center">{status === 'same' ? '═' : status === 'degraded' ? <span className="text-red-500">↓</span> : status === 'improved' ? <span className="text-green-500">↑</span> : <span className="text-yellow-500">↔</span>}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+
+      // Print View
+      const PrintView = () => {
+        const allPhotos = [];
+        Object.entries(data.pieces).forEach(([_, piece]) => {
+          [...piece.etatLieux, ...piece.inventaire].forEach(item => {
+            item.photos.forEach(photo => allPhotos.push({ piece: piece.nom, element: item.nom, photo, index: allPhotos.length + 1 }));
+          });
+        });
+        return (
+          <div className="fixed inset-0 bg-white z-50 overflow-auto">
+            <div className="max-w-3xl mx-auto p-4">
+              <div className="flex justify-between items-center mb-4 no-print">
+                <h2 className="text-xl font-bold">Aperçu</h2>
+                <div className="flex gap-2">
+                  <button onClick={generatePDF} disabled={isGeneratingPdf} className="px-3 py-2 bg-red-600 text-white rounded-lg text-sm disabled:opacity-50">{isGeneratingPdf ? '...' : '📄 PDF'}</button>
+                  <button onClick={() => window.print()} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm">🖨 Imprimer</button>
+                  <button onClick={() => setShowPrint(false)} className="px-3 py-2 bg-gray-200 rounded-lg">✕</button>
+                </div>
+              </div>
+              <div id="print-content">
+                <div className="text-center mb-6 border-b pb-4">
+                  <h1 className="text-2xl font-bold">ÉTAT DES LIEUX {data.info.type.toUpperCase()}</h1>
+                  <p className="text-gray-600">{data.info.appartement}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-lg text-sm">
+                  <div><strong>Propriétaire:</strong> {data.info.proprietaire || '-'}</div>
+                  <div><strong>Locataire:</strong> {data.info.locataire || '-'}</div>
+                  <div><strong>Date:</strong> {data.info.date}</div>
+                  <div><strong>Adresse:</strong> {data.info.adresse || '-'}</div>
+                </div>
+                {sortedPieces.map(([key, piece]) => (
+                  <div key={key} className="mb-4" style={{ pageBreakInside: 'avoid' }}>
+                    <h3 className="font-bold bg-blue-100 p-2 rounded">{piece.nom}</h3>
+                    {piece.etatLieux.length > 0 && (
+                      <table className="w-full text-sm border-collapse mt-1">
+                        <thead><tr className="bg-gray-100"><th className="border p-1 text-left">Élément</th><th className="border p-1 text-center w-20">État</th><th className="border p-1 text-left">Commentaire</th></tr></thead>
+                        <tbody>
+                          {piece.etatLieux.map(item => (
+                            <tr key={item.id}><td className="border p-1">{item.nom}</td><td className="border p-1 text-center"><span className={`px-1 rounded text-xs ${item.etat === 'Bon' ? 'bg-green-200' : item.etat === 'Approprié' ? 'bg-yellow-200' : item.etat === 'Mauvais' ? 'bg-red-200' : 'bg-gray-200'}`}>{item.etat || '-'}</span></td><td className="border p-1 text-gray-600">{item.commentaire || '-'}{item.photos.length > 0 && ` 📷${item.photos.length}`}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                    {piece.inventaire.length > 0 && (
+                      <table className="w-full text-sm border-collapse mt-1">
+                        <thead><tr className="bg-green-50"><th className="border p-1 text-left">Inventaire</th><th className="border p-1 text-center w-12">Qté</th><th className="border p-1 text-center w-20">État</th><th className="border p-1 text-left">Commentaire</th></tr></thead>
+                        <tbody>
+                          {piece.inventaire.map(item => (
+                            <tr key={item.id}><td className="border p-1">{item.nom}</td><td className="border p-1 text-center">{item.qte}</td><td className="border p-1 text-center"><span className={`px-1 rounded text-xs ${item.etat === 'Bon' ? 'bg-green-200' : item.etat === 'Approprié' ? 'bg-yellow-200' : item.etat === 'Mauvais' ? 'bg-red-200' : 'bg-gray-200'}`}>{item.etat || '-'}</span></td><td className="border p-1 text-gray-600">{item.commentaire || '-'}</td></tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                ))}
+                <div className="mb-4" style={{ pageBreakInside: 'avoid' }}>
+                  <h3 className="font-bold bg-yellow-100 p-2 rounded">Clés</h3>
+                  <table className="w-full text-sm border-collapse mt-1">
+                    <thead><tr className="bg-gray-100"><th className="border p-1 text-left">Type</th><th className="border p-1 text-center w-12">Qté</th><th className="border p-1 text-center w-20">Rendue</th><th className="border p-1 text-left">Commentaire</th></tr></thead>
+                    <tbody>
+                      {data.cles.map(cle => (
+                        <tr key={cle.id}><td className="border p-1">{cle.nom}</td><td className="border p-1 text-center">{cle.qte}</td><td className="border p-1 text-center"><span className={cle.rendue === 'Oui' ? 'text-green-600' : 'text-red-600'}>{cle.rendue || '-'}</span></td><td className="border p-1 text-gray-600">{cle.commentaire || '-'}</td></tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {allPhotos.length > 0 && (
+                  <div style={{ pageBreakBefore: 'always' }}>
+                    <h3 className="font-bold bg-purple-100 p-2 rounded mb-2">Photos ({allPhotos.length})</h3>
+                    <div className="grid grid-cols-2 gap-2">
+                      {allPhotos.map((p, idx) => (
+                        <div key={idx} className="border rounded overflow-hidden" style={{ pageBreakInside: 'avoid' }}>
+                          <img src={p.photo.data} alt="" className="w-full h-32 object-cover" />
+                          <div className="p-1 bg-gray-50 text-xs"><strong>{p.index}.</strong> {p.piece} - {p.element}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="grid grid-cols-2 gap-8 mt-8 pt-4 border-t">
+                  <div><h4 className="font-semibold mb-2">Signature locataire</h4><div className="h-16 border-2 border-dashed rounded flex items-center justify-center text-gray-400">{data.signatures.locataire || 'Signature'}</div><p className="text-sm mt-1">{data.info.locataire}</p></div>
+                  <div><h4 className="font-semibold mb-2">Signature propriétaire</h4><div className="h-16 border-2 border-dashed rounded flex items-center justify-center text-gray-400">{data.signatures.proprietaire || 'Signature'}</div><p className="text-sm mt-1">{data.info.proprietaire}</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      return (
+        <div className="min-h-screen bg-gray-100 pb-20">
+          {showPrint && <PrintView />}
+          {selectedPhoto && (
+            <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4" onClick={() => setSelectedPhoto(null)}>
+              <button className="absolute top-4 right-4 text-white text-2xl">✕</button>
+              <img src={selectedPhoto.data} alt="" className="max-w-full max-h-full object-contain rounded-lg" />
+            </div>
+          )}
+          {showConfig && <ConfigModal />}
+          {showComparison && <ComparisonModal />}
+
+          {/* Header */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 sticky top-0 z-40 shadow-lg no-print">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-lg font-bold">État des lieux</h1>
+                <p className="text-xs opacity-80">{data.info.type === 'entree' ? '📥 Entrée' : '📤 Sortie'} • {templates[currentTemplate]?.nom}{totalPhotos > 0 && ` • 📷 ${totalPhotos}`}</p>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={() => setShowComparison(true)} className="p-2 bg-white/20 rounded-lg" title="Comparatif">⚖️</button>
+                <button onClick={() => setShowConfig(true)} className="p-2 bg-white/20 rounded-lg" title="Config">⚙️</button>
+                <button onClick={generatePDF} className="p-2 bg-white/20 rounded-lg" title="PDF">📄</button>
+              </div>
+            </div>
+          </div>
+
+          {/* Content */}
+          <div className="p-4">
+            {activeTab === 'info' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl p-4 shadow-sm">
+                  <h2 className="font-semibold text-lg mb-4">Informations</h2>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Type</label>
+                    <div className="flex gap-2">
+                      <button onClick={() => updateInfo('type', 'entree')} className={`flex-1 py-3 rounded-lg font-medium ${data.info.type === 'entree' ? 'bg-green-500 text-white' : 'bg-gray-100'}`}>📥 Entrée</button>
+                      <button onClick={() => updateInfo('type', 'sortie')} className={`flex-1 py-3 rounded-lg font-medium ${data.info.type === 'sortie' ? 'bg-orange-500 text-white' : 'bg-gray-100'}`}>📤 Sortie</button>
+                    </div>
+                  </div>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium mb-2">Appartement</label>
+                    <div className="flex gap-2">
+                      <select value={currentTemplate} onChange={(e) => loadTemplate(e.target.value)} className="flex-1 p-3 border rounded-lg">
+                        {Object.entries(templates).map(([key, tpl]) => <option key={key} value={key}>{tpl.nom}</option>)}
+                      </select>
+                      <button onClick={() => setShowConfig(true)} className="px-4 bg-purple-100 text-purple-700 rounded-lg">⚙️</button>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    <div><label className="block text-sm font-medium mb-1">Propriétaire</label><input type="text" value={data.info.proprietaire} onChange={(e) => updateInfo('proprietaire', e.target.value)} className="w-full p-3 border rounded-lg" /></div>
+                    <div><label className="block text-sm font-medium mb-1">Locataire</label><input type="text" value={data.info.locataire} onChange={(e) => updateInfo('locataire', e.target.value)} className="w-full p-3 border rounded-lg" /></div>
+                    <div><label className="block text-sm font-medium mb-1">Date</label><input type="date" value={data.info.date} onChange={(e) => updateInfo('date', e.target.value)} className="w-full p-3 border rounded-lg" /></div>
+                    <div><label className="block text-sm font-medium mb-1">Adresse</label><textarea value={data.info.adresse} onChange={(e) => updateInfo('adresse', e.target.value)} rows={2} className="w-full p-3 border rounded-lg" /></div>
+                  </div>
+                </div>
+                <button onClick={resetForm} className="w-full py-3 text-red-600 bg-red-50 rounded-lg">Réinitialiser</button>
+              </div>
+            )}
+
+            {activeTab === 'pieces' && (
+              <div>
+                <p className="text-sm text-gray-500 mb-3">Cliquez sur une pièce pour l'inspecter</p>
+                {sortedPieces.map(([key, piece]) => <PieceSection key={key} pieceKey={key} piece={piece} />)}
+              </div>
+            )}
+
+            {activeTab === 'cles' && (
+              <div className="bg-white rounded-xl p-4 shadow-sm">
+                <h2 className="font-semibold text-lg mb-4">🔑 Clés</h2>
+                <div className="space-y-4">
+                  {data.cles.map(cle => (
+                    <div key={cle.id} className="bg-gray-50 p-3 rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="font-medium">{cle.nom}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs">Qté:</span>
+                          <input type="number" min="0" value={cle.qte} onChange={(e) => updateCle(cle.id, 'qte', parseInt(e.target.value) || 0)} className="w-12 text-center p-1 border rounded text-sm" />
+                        </div>
+                      </div>
+                      <div className="flex gap-2 mb-2">
+                        <span className="text-sm">Rendue:</span>
+                        {OUI_NON.map(opt => <button key={opt} onClick={() => updateCle(cle.id, 'rendue', opt)} className={`px-3 py-1 text-sm rounded-lg border ${cle.rendue === opt ? opt === 'Oui' ? 'bg-green-500 text-white' : 'bg-red-500 text-white' : 'bg-white'}`}>{opt}</button>)}
+                      </div>
+                      <input type="text" placeholder="Commentaire..." value={cle.commentaire} onChange={(e) => updateCle(cle.id, 'commentaire', e.target.value)} className="w-full text-sm p-2 border rounded-lg mb-2" />
+                      <PhotoGallery photos={cle.photos} onRemove={(photoId) => updateCle(cle.id, 'photos', cle.photos.filter(p => p.id !== photoId))} inputId={`p-c-${cle.id}`} onAddPhoto={(e) => handlePhotoCapture(e, (photos) => updateCle(cle.id, 'photos', photos), cle.photos)} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'signature' && (
+              <div className="space-y-4">
+                <div className="bg-white rounded-xl p-4 shadow-sm">
+                  <h2 className="font-semibold text-lg mb-4">Signatures</h2>
+                  <div className="space-y-4">
+                    <div><label className="block text-sm font-medium mb-2">Locataire</label><input type="text" value={data.signatures.locataire} onChange={(e) => updateSignature('locataire', e.target.value)} placeholder="Nom pour valider" className="w-full p-3 border rounded-lg text-center" /></div>
+                    <div><label className="block text-sm font-medium mb-2">Propriétaire</label><input type="text" value={data.signatures.proprietaire} onChange={(e) => updateSignature('proprietaire', e.target.value)} placeholder="Nom pour valider" className="w-full p-3 border rounded-lg text-center" /></div>
+                  </div>
+                </div>
+                <div className="bg-green-50 rounded-xl p-4">
+                  <h3 className="font-medium text-green-800 mb-2">💾 Sauvegarder</h3>
+                  <button onClick={saveCurrentEdl} className="w-full py-3 bg-green-600 text-white rounded-lg font-medium">Sauvegarder cet état des lieux</button>
+                  {savedEdls.length > 0 && (
+                    <div className="mt-3 space-y-1">
+                      <p className="text-xs text-gray-600">{savedEdls.length} sauvegarde(s)</p>
+                      {savedEdls.slice(-3).map(edl => (
+                        <div key={edl.id} className="flex items-center justify-between bg-white p-2 rounded text-sm">
+                          <span>{edl.data.info.type === 'entree' ? '📥' : '📤'} {edl.data.info.appartement} - {edl.data.info.date}</span>
+                          <div className="flex gap-2">
+                            <button onClick={() => loadEdl(edl)} className="text-blue-600 text-xs">Charger</button>
+                            <button onClick={() => deleteEdl(edl.id)} className="text-red-500 text-xs">✕</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="bg-blue-50 rounded-xl p-4">
+                  <h3 className="font-medium text-blue-800 mb-2">📋 Récapitulatif</h3>
+                  <p className="text-sm text-blue-700">Type: <strong>{data.info.type === 'entree' ? 'Entrée' : 'Sortie'}</strong><br />Appartement: <strong>{templates[currentTemplate]?.nom}</strong><br />Photos: <strong>{totalPhotos}</strong></p>
+                  <div className="grid grid-cols-2 gap-2 mt-3">
+                    <button onClick={() => setShowPrint(true)} className="py-3 bg-blue-600 text-white rounded-lg text-sm">🖨 Aperçu</button>
+                    <button onClick={generatePDF} disabled={isGeneratingPdf} className="py-3 bg-red-600 text-white rounded-lg text-sm disabled:opacity-50">{isGeneratingPdf ? '...' : '📄 PDF'}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Bottom Navigation */}
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t flex shadow-lg z-40 no-print">
+            <TabButton id="info" icon="FileText" label="Infos" active={activeTab === 'info'} />
+            <TabButton id="pieces" icon="Home" label="Pièces" active={activeTab === 'pieces'} badge={totalPhotos} />
+            <TabButton id="cles" icon="Key" label="Clés" active={activeTab === 'cles'} />
+            <TabButton id="signature" icon="Check" label="Valider" active={activeTab === 'signature'} />
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
