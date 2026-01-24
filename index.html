@@ -326,8 +326,27 @@
         alert('État des lieux sauvegardé !');
       };
 
-      const loadEdl = (edl) => { setData(edl.data); if (edl.templateKey && templates[edl.templateKey]) setCurrentTemplate(edl.templateKey); };
-      const deleteEdl = (edlId) => { if (window.confirm('Supprimer ?')) setSavedEdls(prev => prev.filter(e => e.id !== edlId)); };
+      const loadEdl = (edl) => { 
+        if (!edl || !edl.data) {
+          alert('Erreur: données invalides');
+          return;
+        }
+        // Charger les données
+        setData(deepClone(edl.data)); 
+        // Mettre à jour le template si disponible
+        if (edl.templateKey && templates[edl.templateKey]) {
+          setCurrentTemplate(edl.templateKey);
+        }
+        // Retourner à l'onglet info
+        setActiveTab('info');
+        // Feedback utilisateur
+        alert('✅ État des lieux chargé !\n\n' + 
+          'Type: ' + (edl.data.info.type === 'entree' ? 'Entrée' : 'Sortie') + '\n' +
+          'Appartement: ' + edl.data.info.appartement + '\n' +
+          'Date: ' + edl.data.info.date
+        );
+      };
+      const deleteEdl = (edlId) => { if (window.confirm('Supprimer cette sauvegarde ?')) setSavedEdls(prev => prev.filter(e => e.id !== edlId)); };
 
       const getComparisonStatus = (entryItem, exitItem) => {
         if (!entryItem || !exitItem) return 'unknown';
@@ -1414,6 +1433,33 @@
           <div className="p-4">
             {activeTab === 'info' && (
               <div className="space-y-4">
+                {/* Sauvegardes existantes */}
+                {savedEdls.length > 0 && (
+                  <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                    <h3 className="font-medium text-blue-800 mb-2">📂 Reprendre un état des lieux</h3>
+                    <div className="space-y-2 max-h-40 overflow-auto">
+                      {savedEdls.slice().reverse().slice(0, 5).map(edl => (
+                        <div key={edl.id} className="flex items-center justify-between bg-white p-2 rounded-lg border">
+                          <div className="flex items-center gap-2">
+                            <span>{edl.data.info.type === 'entree' ? '📥' : '📤'}</span>
+                            <span className="font-medium text-sm">{edl.data.info.appartement}</span>
+                            <span className="text-xs text-gray-400">{edl.data.info.date}</span>
+                          </div>
+                          <button 
+                            onClick={() => loadEdl(edl)} 
+                            className="px-3 py-1 bg-blue-600 text-white rounded text-sm"
+                          >
+                            Charger
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    {savedEdls.length > 5 && (
+                      <p className="text-xs text-blue-600 mt-2">+ {savedEdls.length - 5} autres dans l'onglet "Valider"</p>
+                    )}
+                  </div>
+                )}
+
                 <div className="bg-white rounded-xl p-4 shadow-sm">
                   <h2 className="font-semibold text-lg mb-4">Informations</h2>
                   <div className="mb-4">
@@ -1488,17 +1534,35 @@
                   <h3 className="font-medium text-green-800 mb-2">💾 Sauvegarder</h3>
                   <button onClick={saveCurrentEdl} className="w-full py-3 bg-green-600 text-white rounded-lg font-medium">Sauvegarder cet état des lieux</button>
                   {savedEdls.length > 0 && (
-                    <div className="mt-3 space-y-1">
-                      <p className="text-xs text-gray-600">{savedEdls.length} sauvegarde(s)</p>
-                      {savedEdls.slice(-3).map(edl => (
-                        <div key={edl.id} className="flex items-center justify-between bg-white p-2 rounded text-sm">
-                          <span>{edl.data.info.type === 'entree' ? '📥' : '📤'} {edl.data.info.appartement} - {edl.data.info.date}</span>
-                          <div className="flex gap-2">
-                            <button onClick={() => loadEdl(edl)} className="text-blue-600 text-xs">Charger</button>
-                            <button onClick={() => deleteEdl(edl.id)} className="text-red-500 text-xs">✕</button>
+                    <div className="mt-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">📂 Mes sauvegardes ({savedEdls.length})</p>
+                      <div className="space-y-2 max-h-60 overflow-auto">
+                        {savedEdls.slice().reverse().map(edl => (
+                          <div key={edl.id} className="bg-white p-3 rounded-lg border shadow-sm">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <span className="text-lg mr-2">{edl.data.info.type === 'entree' ? '📥' : '📤'}</span>
+                                <span className="font-medium">{edl.data.info.appartement}</span>
+                              </div>
+                              <span className="text-xs text-gray-400">{edl.data.info.date}</span>
+                            </div>
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={() => loadEdl(edl)} 
+                                className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium"
+                              >
+                                📂 Charger
+                              </button>
+                              <button 
+                                onClick={() => deleteEdl(edl.id)} 
+                                className="px-3 py-2 bg-red-100 text-red-600 rounded-lg text-sm"
+                              >
+                                🗑
+                              </button>
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
