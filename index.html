@@ -14,7 +14,29 @@
   <style>
     * { -webkit-tap-highlight-color: transparent; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    @media print { .no-print { display: none !important; } }
+    
+    /* Styles pour l'impression et le PDF */
+    @media print {
+      .no-print { display: none !important; }
+      
+      /* Répéter les en-têtes de tableau sur chaque page */
+      thead { display: table-header-group !important; }
+      tfoot { display: table-footer-group !important; }
+      
+      /* Éviter les coupures dans les lignes */
+      tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+      
+      /* Forcer les sauts de page */
+      .page-break-before { page-break-before: always !important; break-before: page !important; }
+      
+      /* Bloc signatures toujours ensemble */
+      .signatures-block { page-break-inside: avoid !important; break-inside: avoid !important; }
+    }
+    
+    /* Pour html2pdf.js - styles inline ne suffisent pas toujours */
+    #print-content thead { display: table-header-group; }
+    #print-content tr { page-break-inside: avoid; break-inside: avoid; }
+    #print-content .signatures-block { page-break-inside: avoid; break-inside: avoid; }
   </style>
 </head>
 <body>
@@ -339,12 +361,32 @@
           try {
             const element = document.getElementById('print-content');
             await window.html2pdf().set({
-              margin: 10, filename: `edl-${data.info.type}-${data.info.date}.pdf`,
-              image: { type: 'jpeg', quality: 0.95 }, html2canvas: { scale: 2 },
-              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+              margin: [10, 10, 15, 10], // top, left, bottom, right
+              filename: `edl-${data.info.type}-${data.info.date}.pdf`,
+              image: { type: 'jpeg', quality: 0.98 },
+              html2canvas: { 
+                scale: 2,
+                useCORS: true,
+                logging: false
+              },
+              jsPDF: { 
+                unit: 'mm', 
+                format: 'a4', 
+                orientation: 'portrait'
+              },
+              pagebreak: { 
+                mode: ['avoid-all', 'css', 'legacy'],
+                before: '.page-break-before',
+                after: '.page-break-after',
+                avoid: ['tr', 'td', '.no-break']
+              }
             }).from(element).save();
-          } catch (err) { alert('Erreur PDF'); }
-          setShowPrint(false); setIsGeneratingPdf(false);
+          } catch (err) { 
+            console.error(err);
+            alert('Erreur PDF'); 
+          }
+          setShowPrint(false); 
+          setIsGeneratingPdf(false);
         }, 500);
       };
 
@@ -480,10 +522,66 @@
         const [newPieceName, setNewPieceName] = useState('');
         const [newItemName, setNewItemName] = useState('');
         const [newItemQte, setNewItemQte] = useState('1');
+        const [editingPieceKey, setEditingPieceKey] = useState(null);
+        const [editingTemplateKey, setEditingTemplateKey] = useState(null);
         // États locaux pour les inputs de quantité (pour pouvoir vider le champ)
         const [localQtes, setLocalQtes] = useState({});
         
         const template = templates[configSelectedTemplate];
+
+        // Fonction pour renommer un modèle
+        const renameTemplate = (templateKey, newName) => {
+          setTemplates(prev => ({
+            ...prev,
+            [templateKey]: {
+              ...prev[templateKey],
+              nom: newName
+            }
+          }));
+        };
+
+        // Fonction pour renommer une pièce
+        const renamePiece = (templateKey, pieceKey, newName) => {
+          setTemplates(prev => ({
+            ...prev,
+            [templateKey]: {
+              ...prev[templateKey],
+              pieces: {
+                ...prev[templateKey].pieces,
+                [pieceKey]: {
+                  ...prev[templateKey].pieces[pieceKey],
+                  nom: newName
+                }
+              }
+            }
+          }));
+        };
+
+        // Fonction pour dupliquer une pièce
+        const duplicatePiece = (templateKey, pieceKey) => {
+          const piece = templates[templateKey].pieces[pieceKey];
+          const newPieceId = 'piece_' + Date.now();
+          const maxOrdre = Math.max(...Object.values(templates[templateKey].pieces).map(p => p.ordre || 0), 0);
+          
+          // Créer une copie profonde de la pièce
+          const newPiece = {
+            nom: piece.nom + ' (copie)',
+            ordre: maxOrdre + 1,
+            etatLieux: piece.etatLieux.map(item => ({ ...item, id: item.id + '_' + Date.now() })),
+            inventaire: piece.inventaire.map(item => ({ ...item, id: item.id + '_' + Date.now() }))
+          };
+          
+          setTemplates(prev => ({
+            ...prev,
+            [templateKey]: {
+              ...prev[templateKey],
+              pieces: {
+                ...prev[templateKey].pieces,
+                [newPieceId]: newPiece
+              }
+            }
+          }));
+        };
 
         // Fonction pour gérer le champ quantité avec possibilité de vider
         const handleQteChange = (pieceKey, itemId, value) => {
@@ -553,16 +651,50 @@
                             {Object.entries(templates).map(([key, tpl]) => (
                               <div key={key} className={`p-3 rounded-xl border-2 transition-all ${configSelectedTemplate === key ? 'border-purple-500 bg-purple-50' : 'border-gray-200 hover:border-gray-300'}`}>
                                 <div className="flex items-center justify-between">
-                                  <button onClick={() => setConfigSelectedTemplate(key)} className="flex-1 text-left">
-                                    <span className="font-medium">{tpl.nom}</span>
-                                    {key === 'default' && <span className="ml-2 text-xs text-gray-400">(défaut)</span>}
-                                    {currentTemplate === key && <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">actif</span>}
-                                  </button>
-                                  {key !== 'default' && (
-                                    <button onClick={() => deleteTemplate(key)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">🗑</button>
+                                  {editingTemplateKey === key ? (
+                                    <input
+                                      type="text"
+                                      defaultValue={tpl.nom}
+                                      autoFocus
+                                      onFocus={(e) => e.target.select()}
+                                      onBlur={(e) => {
+                                        if (e.target.value.trim()) {
+                                          renameTemplate(key, e.target.value.trim());
+                                        }
+                                        setEditingTemplateKey(null);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && e.target.value.trim()) {
+                                          renameTemplate(key, e.target.value.trim());
+                                          setEditingTemplateKey(null);
+                                        }
+                                        if (e.key === 'Escape') {
+                                          setEditingTemplateKey(null);
+                                        }
+                                      }}
+                                      className="flex-1 p-2 border-2 border-purple-500 rounded-lg font-medium mr-2"
+                                    />
+                                  ) : (
+                                    <button onClick={() => setConfigSelectedTemplate(key)} className="flex-1 text-left">
+                                      <span className="font-medium">{tpl.nom}</span>
+                                      {key === 'default' && <span className="ml-2 text-xs text-gray-400">(défaut)</span>}
+                                      {currentTemplate === key && <span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded">actif</span>}
+                                    </button>
                                   )}
+                                  <div className="flex items-center gap-1">
+                                    <button 
+                                      onClick={() => setEditingTemplateKey(key)} 
+                                      className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg"
+                                      title="Renommer"
+                                    >
+                                      ✏️
+                                    </button>
+                                    {key !== 'default' && (
+                                      <button onClick={() => deleteTemplate(key)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg">🗑</button>
+                                    )}
+                                  </div>
                                 </div>
-                                {configSelectedTemplate === key && (
+                                {configSelectedTemplate === key && !editingTemplateKey && (
                                   <div className="mt-3 pt-3 border-t border-purple-200">
                                     <p className="text-xs text-gray-500 mb-2">{Object.keys(tpl.pieces).length} pièces configurées</p>
                                     <div className="flex gap-2">
@@ -657,12 +789,58 @@
 
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-gray-600">Pièces du modèle :</label>
+                      <p className="text-xs text-gray-400">✏️ Renommer • 📋 Dupliquer • 🗑 Supprimer</p>
                       {Object.entries(template.pieces).sort((a, b) => (a[1].ordre || 0) - (b[1].ordre || 0)).map(([pieceKey, piece]) => (
                         <div key={pieceKey} className="flex items-center justify-between p-3 bg-white border rounded-lg">
-                          <span className="font-medium">{piece.nom}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs text-gray-400">{piece.etatLieux.length} él. • {piece.inventaire.length} inv.</span>
-                            <button onClick={() => removePieceFromTemplate(configSelectedTemplate, pieceKey)} className="p-2 text-red-500 hover:bg-red-50 rounded">🗑</button>
+                          {editingPieceKey === pieceKey ? (
+                            <input
+                              type="text"
+                              defaultValue={piece.nom}
+                              autoFocus
+                              onFocus={(e) => e.target.select()}
+                              onBlur={(e) => {
+                                if (e.target.value.trim()) {
+                                  renamePiece(configSelectedTemplate, pieceKey, e.target.value.trim());
+                                }
+                                setEditingPieceKey(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && e.target.value.trim()) {
+                                  renamePiece(configSelectedTemplate, pieceKey, e.target.value.trim());
+                                  setEditingPieceKey(null);
+                                }
+                                if (e.key === 'Escape') {
+                                  setEditingPieceKey(null);
+                                }
+                              }}
+                              className="flex-1 p-2 border-2 border-blue-500 rounded-lg font-medium mr-2"
+                            />
+                          ) : (
+                            <span className="font-medium flex-1">{piece.nom}</span>
+                          )}
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs text-gray-400 mr-1">{piece.etatLieux.length}+{piece.inventaire.length}</span>
+                            <button 
+                              onClick={() => setEditingPieceKey(pieceKey)} 
+                              className="p-2 text-blue-500 hover:bg-blue-50 rounded"
+                              title="Renommer"
+                            >
+                              ✏️
+                            </button>
+                            <button 
+                              onClick={() => duplicatePiece(configSelectedTemplate, pieceKey)} 
+                              className="p-2 text-green-600 hover:bg-green-50 rounded"
+                              title="Dupliquer"
+                            >
+                              📋
+                            </button>
+                            <button 
+                              onClick={() => removePieceFromTemplate(configSelectedTemplate, pieceKey)} 
+                              className="p-2 text-red-500 hover:bg-red-50 rounded"
+                              title="Supprimer"
+                            >
+                              🗑
+                            </button>
                           </div>
                         </div>
                       ))}
@@ -929,6 +1107,12 @@
             item.photos.forEach(photo => allPhotos.push({ piece: piece.nom, element: item.nom, photo, index: allPhotos.length + 1 }));
           });
         });
+        
+        // Styles pour éviter les coupures
+        const noBreakInside = { pageBreakInside: 'avoid', breakInside: 'avoid' };
+        const noBreakAfter = { pageBreakAfter: 'avoid', breakAfter: 'avoid' };
+        const breakBefore = { pageBreakBefore: 'always', breakBefore: 'page' };
+        
         return (
           <div className="fixed inset-0 bg-white z-50 overflow-auto">
             <div className="max-w-3xl mx-auto p-4">
@@ -940,70 +1124,259 @@
                   <button onClick={() => setShowPrint(false)} className="px-3 py-2 bg-gray-200 rounded-lg">✕</button>
                 </div>
               </div>
-              <div id="print-content">
-                <div className="text-center mb-6 border-b pb-4">
-                  <h1 className="text-2xl font-bold">ÉTAT DES LIEUX {data.info.type.toUpperCase()}</h1>
-                  <p className="text-gray-600">{data.info.appartement}</p>
+              <div id="print-content" style={{ fontFamily: 'Arial, sans-serif', fontSize: '11px', lineHeight: '1.4' }}>
+                
+                {/* EN-TÊTE */}
+                <div style={{ ...noBreakInside, marginBottom: '20px', borderBottom: '2px solid #1e40af', paddingBottom: '15px' }}>
+                  <h1 style={{ fontSize: '20px', fontWeight: 'bold', textAlign: 'center', textTransform: 'uppercase', margin: '0 0 5px 0' }}>
+                    État des lieux {data.info.type}
+                  </h1>
+                  <p style={{ fontSize: '14px', textAlign: 'center', color: '#4b5563', margin: 0 }}>{data.info.appartement}</p>
                 </div>
-                <div className="grid grid-cols-2 gap-4 mb-6 p-4 bg-gray-50 rounded-lg text-sm">
-                  <div><strong>Propriétaire:</strong> {data.info.proprietaire || '-'}</div>
-                  <div><strong>Locataire:</strong> {data.info.locataire || '-'}</div>
-                  <div><strong>Date:</strong> {data.info.date}</div>
-                  <div><strong>Adresse:</strong> {data.info.adresse || '-'}</div>
-                </div>
-                {sortedPieces.map(([key, piece]) => (
-                  <div key={key} className="mb-4" style={{ pageBreakInside: 'avoid' }}>
-                    <h3 className="font-bold bg-blue-100 p-2 rounded">{piece.nom}</h3>
-                    {piece.etatLieux.length > 0 && (
-                      <table className="w-full text-sm border-collapse mt-1">
-                        <thead><tr className="bg-gray-100"><th className="border p-1 text-left">Élément</th><th className="border p-1 text-center w-20">État</th><th className="border p-1 text-left">Commentaire</th></tr></thead>
+                
+                {/* INFOS GÉNÉRALES */}
+                <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px', ...noBreakInside }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ padding: '8px', border: '1px solid #d1d5db', backgroundColor: '#f3f4f6', fontWeight: '600', width: '20%' }}>Propriétaire</td>
+                      <td style={{ padding: '8px', border: '1px solid #d1d5db', width: '30%' }}>{data.info.proprietaire || '-'}</td>
+                      <td style={{ padding: '8px', border: '1px solid #d1d5db', backgroundColor: '#f3f4f6', fontWeight: '600', width: '20%' }}>Locataire</td>
+                      <td style={{ padding: '8px', border: '1px solid #d1d5db', width: '30%' }}>{data.info.locataire || '-'}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '8px', border: '1px solid #d1d5db', backgroundColor: '#f3f4f6', fontWeight: '600' }}>Date</td>
+                      <td style={{ padding: '8px', border: '1px solid #d1d5db' }}>{data.info.date}</td>
+                      <td style={{ padding: '8px', border: '1px solid #d1d5db', backgroundColor: '#f3f4f6', fontWeight: '600' }}>Adresse</td>
+                      <td style={{ padding: '8px', border: '1px solid #d1d5db' }}>{data.info.adresse || '-'}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                
+                {/* PIÈCES */}
+                {sortedPieces.map(([key, piece], pieceIndex) => {
+                  // Calculer si la pièce est "petite" (peut tenir sur une page)
+                  const totalItems = piece.etatLieux.length + piece.inventaire.length;
+                  const isSmallSection = totalItems <= 8;
+                  
+                  return (
+                    <div key={key} style={{ marginBottom: '15px' }}>
+                      {/* Wrapper pour garder en-tête + début du tableau ensemble */}
+                      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                        {/* En-tête de pièce DANS le tableau pour qu'il ne soit jamais séparé */}
+                        <thead>
+                          <tr>
+                            <th colSpan="4" style={{ 
+                              backgroundColor: '#1e40af', 
+                              color: 'white', 
+                              padding: '8px 12px', 
+                              fontWeight: 'bold', 
+                              fontSize: '12px',
+                              textTransform: 'uppercase',
+                              textAlign: 'left',
+                              border: 'none'
+                            }}>
+                              {piece.nom}
+                            </th>
+                          </tr>
+                          {piece.etatLieux.length > 0 && (
+                            <tr style={{ backgroundColor: '#e5e7eb' }}>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: '600', width: '40%' }}>Élément</th>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '600', width: '12%' }}>État</th>
+                              <th colSpan="2" style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: '600', width: '48%' }}>Commentaire</th>
+                            </tr>
+                          )}
+                        </thead>
                         <tbody>
-                          {piece.etatLieux.map(item => (
-                            <tr key={item.id}><td className="border p-1">{item.nom}</td><td className="border p-1 text-center"><span className={`px-1 rounded text-xs ${item.etat === 'Bon' ? 'bg-green-200' : item.etat === 'Approprié' ? 'bg-yellow-200' : item.etat === 'Mauvais' ? 'bg-red-200' : 'bg-gray-200'}`}>{item.etat || '-'}</span></td><td className="border p-1 text-gray-600">{item.commentaire || '-'}{item.photos.length > 0 && ` 📷${item.photos.length}`}</td></tr>
+                          {/* État des lieux */}
+                          {piece.etatLieux.map((item, idx) => (
+                            <tr key={item.id} style={noBreakInside}>
+                              <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', verticalAlign: 'top', width: '40%' }}>{item.nom}</td>
+                              <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', textAlign: 'center', verticalAlign: 'top', width: '12%' }}>
+                                <span style={{ 
+                                  display: 'inline-block',
+                                  padding: '2px 8px', 
+                                  borderRadius: '4px', 
+                                  fontSize: '10px',
+                                  fontWeight: '500',
+                                  backgroundColor: item.etat === 'Bon' ? '#dcfce7' : item.etat === 'Approprié' ? '#fef9c3' : item.etat === 'Mauvais' ? '#fee2e2' : '#f3f4f6',
+                                  color: item.etat === 'Bon' ? '#166534' : item.etat === 'Approprié' ? '#854d0e' : item.etat === 'Mauvais' ? '#991b1b' : '#6b7280'
+                                }}>
+                                  {item.etat || '-'}
+                                </span>
+                              </td>
+                              <td colSpan="2" style={{ padding: '5px 8px', border: '1px solid #d1d5db', color: '#4b5563', verticalAlign: 'top', width: '48%' }}>
+                                {item.commentaire || '-'}
+                                {item.photos.length > 0 && <span style={{ color: '#2563eb', marginLeft: '5px' }}>[📷 {item.photos.length}]</span>}
+                              </td>
+                            </tr>
+                          ))}
+                          
+                          {/* Séparateur inventaire si besoin */}
+                          {piece.etatLieux.length > 0 && piece.inventaire.length > 0 && (
+                            <tr style={{ backgroundColor: '#dcfce7', ...noBreakAfter }}>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: '600', width: '35%' }}>Inventaire</th>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '600', width: '8%' }}>Qté</th>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '600', width: '12%' }}>État</th>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: '600', width: '45%' }}>Commentaire</th>
+                            </tr>
+                          )}
+                          
+                          {/* Inventaire sans en-tête état si pas d'étatLieux */}
+                          {piece.etatLieux.length === 0 && piece.inventaire.length > 0 && (
+                            <tr style={{ backgroundColor: '#dcfce7', ...noBreakAfter }}>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: '600', width: '35%' }}>Inventaire</th>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '600', width: '8%' }}>Qté</th>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '600', width: '12%' }}>État</th>
+                              <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: '600', width: '45%' }}>Commentaire</th>
+                            </tr>
+                          )}
+                          
+                          {/* Lignes inventaire */}
+                          {piece.inventaire.map((item, idx) => (
+                            <tr key={item.id} style={noBreakInside}>
+                              <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', verticalAlign: 'top' }}>{item.nom}</td>
+                              <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '500', verticalAlign: 'top' }}>{item.qte}</td>
+                              <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', textAlign: 'center', verticalAlign: 'top' }}>
+                                <span style={{ 
+                                  display: 'inline-block',
+                                  padding: '2px 8px', 
+                                  borderRadius: '4px', 
+                                  fontSize: '10px',
+                                  fontWeight: '500',
+                                  backgroundColor: item.etat === 'Bon' ? '#dcfce7' : item.etat === 'Approprié' ? '#fef9c3' : item.etat === 'Mauvais' ? '#fee2e2' : '#f3f4f6',
+                                  color: item.etat === 'Bon' ? '#166534' : item.etat === 'Approprié' ? '#854d0e' : item.etat === 'Mauvais' ? '#991b1b' : '#6b7280'
+                                }}>
+                                  {item.etat || '-'}
+                                </span>
+                              </td>
+                              <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', color: '#4b5563', verticalAlign: 'top' }}>{item.commentaire || '-'}</td>
+                            </tr>
                           ))}
                         </tbody>
                       </table>
-                    )}
-                    {piece.inventaire.length > 0 && (
-                      <table className="w-full text-sm border-collapse mt-1">
-                        <thead><tr className="bg-green-50"><th className="border p-1 text-left">Inventaire</th><th className="border p-1 text-center w-12">Qté</th><th className="border p-1 text-center w-20">État</th><th className="border p-1 text-left">Commentaire</th></tr></thead>
-                        <tbody>
-                          {piece.inventaire.map(item => (
-                            <tr key={item.id}><td className="border p-1">{item.nom}</td><td className="border p-1 text-center">{item.qte}</td><td className="border p-1 text-center"><span className={`px-1 rounded text-xs ${item.etat === 'Bon' ? 'bg-green-200' : item.etat === 'Approprié' ? 'bg-yellow-200' : item.etat === 'Mauvais' ? 'bg-red-200' : 'bg-gray-200'}`}>{item.etat || '-'}</span></td><td className="border p-1 text-gray-600">{item.commentaire || '-'}</td></tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-                  </div>
-                ))}
-                <div className="mb-4" style={{ pageBreakInside: 'avoid' }}>
-                  <h3 className="font-bold bg-yellow-100 p-2 rounded">Clés</h3>
-                  <table className="w-full text-sm border-collapse mt-1">
-                    <thead><tr className="bg-gray-100"><th className="border p-1 text-left">Type</th><th className="border p-1 text-center w-12">Qté</th><th className="border p-1 text-center w-20">Rendue</th><th className="border p-1 text-left">Commentaire</th></tr></thead>
+                    </div>
+                  );
+                })}
+                
+                {/* CLÉS */}
+                <div style={{ marginBottom: '15px' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+                    <thead>
+                      <tr>
+                        <th colSpan="4" style={{ 
+                          backgroundColor: '#eab308', 
+                          color: 'white', 
+                          padding: '8px 12px', 
+                          fontWeight: 'bold', 
+                          fontSize: '12px',
+                          textTransform: 'uppercase',
+                          textAlign: 'left',
+                          border: 'none'
+                        }}>
+                          🔑 Clés remises
+                        </th>
+                      </tr>
+                      <tr style={{ backgroundColor: '#e5e7eb' }}>
+                        <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: '600', width: '35%' }}>Type</th>
+                        <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '600', width: '8%' }}>Qté</th>
+                        <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '600', width: '12%' }}>Rendue</th>
+                        <th style={{ padding: '6px 8px', border: '1px solid #d1d5db', textAlign: 'left', fontWeight: '600', width: '45%' }}>Commentaire</th>
+                      </tr>
+                    </thead>
                     <tbody>
                       {data.cles.map(cle => (
-                        <tr key={cle.id}><td className="border p-1">{cle.nom}</td><td className="border p-1 text-center">{cle.qte}</td><td className="border p-1 text-center"><span className={cle.rendue === 'Oui' ? 'text-green-600' : 'text-red-600'}>{cle.rendue || '-'}</span></td><td className="border p-1 text-gray-600">{cle.commentaire || '-'}</td></tr>
+                        <tr key={cle.id} style={noBreakInside}>
+                          <td style={{ padding: '5px 8px', border: '1px solid #d1d5db' }}>{cle.nom}</td>
+                          <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', textAlign: 'center', fontWeight: '500' }}>{cle.qte}</td>
+                          <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', textAlign: 'center' }}>
+                            <span style={{ 
+                              display: 'inline-block',
+                              padding: '2px 8px', 
+                              borderRadius: '4px', 
+                              fontSize: '10px',
+                              fontWeight: '500',
+                              backgroundColor: cle.rendue === 'Oui' ? '#dcfce7' : cle.rendue === 'Non' ? '#fee2e2' : '#f3f4f6',
+                              color: cle.rendue === 'Oui' ? '#166534' : cle.rendue === 'Non' ? '#991b1b' : '#6b7280'
+                            }}>
+                              {cle.rendue || '-'}
+                            </span>
+                          </td>
+                          <td style={{ padding: '5px 8px', border: '1px solid #d1d5db', color: '#4b5563' }}>{cle.commentaire || '-'}</td>
+                        </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+                
+                {/* SIGNATURES - Toujours ensemble, sur nouvelle page si nécessaire */}
+                <div className="signatures-block" style={{ ...noBreakInside, marginTop: '30px', paddingTop: '20px', borderTop: '2px solid #d1d5db' }}>
+                  <div style={{ display: 'flex', gap: '40px' }}>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase', marginBottom: '8px' }}>Signature Locataire</p>
+                      <div style={{ 
+                        height: '80px', 
+                        border: '2px dashed #9ca3af', 
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#9ca3af',
+                        fontSize: '12px',
+                        marginBottom: '5px'
+                      }}>
+                        {data.signatures.locataire || 'Signature'}
+                      </div>
+                      <p style={{ fontSize: '11px', color: '#4b5563', margin: 0 }}>{data.info.locataire || 'Nom du locataire'}</p>
+                      <p style={{ fontSize: '10px', color: '#9ca3af', margin: '3px 0 0 0' }}>Fait à _____________ le {data.info.date}</p>
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <p style={{ fontWeight: 'bold', fontSize: '11px', textTransform: 'uppercase', marginBottom: '8px' }}>Signature Propriétaire</p>
+                      <div style={{ 
+                        height: '80px', 
+                        border: '2px dashed #9ca3af', 
+                        borderRadius: '8px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#9ca3af',
+                        fontSize: '12px',
+                        marginBottom: '5px'
+                      }}>
+                        {data.signatures.proprietaire || 'Signature'}
+                      </div>
+                      <p style={{ fontSize: '11px', color: '#4b5563', margin: 0 }}>{data.info.proprietaire || 'Nom du propriétaire'}</p>
+                      <p style={{ fontSize: '10px', color: '#9ca3af', margin: '3px 0 0 0' }}>Fait à _____________ le {data.info.date}</p>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* PHOTOS - Sur nouvelle page */}
                 {allPhotos.length > 0 && (
-                  <div style={{ pageBreakBefore: 'always' }}>
-                    <h3 className="font-bold bg-purple-100 p-2 rounded mb-2">Photos ({allPhotos.length})</h3>
-                    <div className="grid grid-cols-2 gap-2">
+                  <div style={breakBefore}>
+                    <div style={{ 
+                      backgroundColor: '#7c3aed', 
+                      color: 'white', 
+                      padding: '8px 12px', 
+                      fontWeight: 'bold', 
+                      fontSize: '12px',
+                      textTransform: 'uppercase',
+                      marginBottom: '15px'
+                    }}>
+                      📷 Annexe photos ({allPhotos.length})
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                       {allPhotos.map((p, idx) => (
-                        <div key={idx} className="border rounded overflow-hidden" style={{ pageBreakInside: 'avoid' }}>
-                          <img src={p.photo.data} alt="" className="w-full h-32 object-cover" />
-                          <div className="p-1 bg-gray-50 text-xs"><strong>{p.index}.</strong> {p.piece} - {p.element}</div>
+                        <div key={idx} style={{ ...noBreakInside, border: '1px solid #d1d5db', borderRadius: '8px', overflow: 'hidden' }}>
+                          <img src={p.photo.data} alt="" style={{ width: '100%', height: '140px', objectFit: 'cover', display: 'block' }} />
+                          <div style={{ padding: '8px', backgroundColor: '#f9fafb', fontSize: '10px' }}>
+                            <span style={{ fontWeight: 'bold' }}>Photo {p.index}</span> — {p.piece} — {p.element}
+                          </div>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
-                <div className="grid grid-cols-2 gap-8 mt-8 pt-4 border-t">
-                  <div><h4 className="font-semibold mb-2">Signature locataire</h4><div className="h-16 border-2 border-dashed rounded flex items-center justify-center text-gray-400">{data.signatures.locataire || 'Signature'}</div><p className="text-sm mt-1">{data.info.locataire}</p></div>
-                  <div><h4 className="font-semibold mb-2">Signature propriétaire</h4><div className="h-16 border-2 border-dashed rounded flex items-center justify-center text-gray-400">{data.signatures.proprietaire || 'Signature'}</div><p className="text-sm mt-1">{data.info.proprietaire}</p></div>
-                </div>
+                
               </div>
             </div>
           </div>
